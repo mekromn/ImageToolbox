@@ -27,9 +27,12 @@ import com.t8rin.imagetoolbox.core.domain.image.editing.matches
 import com.t8rin.imagetoolbox.core.domain.json.JsonParser
 import com.t8rin.imagetoolbox.core.utils.makeLog
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,6 +44,11 @@ import javax.inject.Singleton
  * caches must not delete user edit intent. Each source URI maps to one stable
  * JSON document; the stronger fingerprint inside the document decides whether
  * it is safe to auto-apply to the current source.
+ *
+ * Replacement is temp-first and crash-recoverable on API 24+: the previous
+ * complete document is renamed to a backup before the new complete temp file is
+ * moved into place. Load falls back to the backup if a process dies between the
+ * two renames.
  */
 @Singleton
 internal class AndroidEditRecipeRepository @Inject constructor(
@@ -54,82 +62,114 @@ internal class AndroidEditRecipeRepository @Inject constructor(
         "reference_lab/recipes"
     )
 
+    private val storageMutex = Mutex()
+
     override suspend fun load(source: EditSourceIdentity): StoredEditRecipe? =
         withContext(dispatchersHolder.ioDispatcher) {
-            if (source.uri.isBlank()) return@withContext null
+            storageMutex.withLock {
+                if (source.uri.isBlank()) return@withLock null
 
-            val file = recipeFile(source.uri)
-            if (!file.isFile) return@withContext null
+                val destination = recipeFile(source.uri)
+                val backup = backupFile(destination)
+                val readable = when {
+                    destination.isFile -> destination
+                    backup.isFile -> backup
+                    else -> return@withLock null
+                }
 
-            runCatching {
-                val recipe = jsonParser.fromJson<EditRecipe>(
-                    json = file.readText(),
-                    type = EditRecipe::class.java
-                ) ?: return@runCatching null
+                runCatching {
+                    val recipe = jsonParser.fromJson<EditRecipe>(
+                        json = readable.readText(),
+                        type = EditRecipe::class.java
+                    ) ?: return@runCatching null
 
-                StoredEditRecipe(
-                    recipe = recipe,
-                    sourceMatches = recipe.source.matches(source)
-                )
-            }.onFailure {
-                // Preserve unreadable/stale work for diagnostics/recovery. Never
-                // silently delete a user's recipe because a parser failed.
-                it.makeLog("AndroidEditRecipeRepository load")
-            }.getOrNull()
+                    StoredEditRecipe(
+                        recipe = recipe,
+                        sourceMatches = recipe.source.matches(source)
+                    )
+                }.onFailure {
+                    // Preserve unreadable/stale work for diagnostics/recovery.
+                    // Never silently delete a user's recipe because parsing failed.
+                    it.makeLog("AndroidEditRecipeRepository load")
+                }.getOrNull()
+            }
         }
 
     override suspend fun save(recipe: EditRecipe): Unit =
         withContext(dispatchersHolder.ioDispatcher) {
-            require(recipe.source.uri.isNotBlank()) {
-                "Cannot persist an EditRecipe with a blank source URI"
-            }
-
-            val json = jsonParser.toJson(
-                obj = recipe,
-                type = EditRecipe::class.java
-            ) ?: error("Could not serialize EditRecipe schema ${recipe.schemaVersion}")
-
-            recipeDirectory.mkdirs()
-
-            val destination = recipeFile(recipe.source.uri)
-            val temporary = File(
-                recipeDirectory,
-                "${destination.name}.tmp"
-            )
-
-            try {
-                FileOutputStream(temporary).use { stream ->
-                    stream.write(json.toByteArray(Charsets.UTF_8))
-                    stream.flush()
-                    stream.fd.sync()
+            storageMutex.withLock {
+                require(recipe.source.uri.isNotBlank()) {
+                    "Cannot persist an EditRecipe with a blank source URI"
                 }
 
-                if (!temporary.renameTo(destination)) {
-                    // Some Android/filesystem combinations may refuse rename over
-                    // an existing target. Fall back to replacement while retaining
-                    // the temp-first write that protects against partial JSON.
-                    temporary.copyTo(
-                        target = destination,
-                        overwrite = true
-                    )
-                    temporary.delete()
-                }
-            } catch (throwable: Throwable) {
+                val json = jsonParser.toJson(
+                    obj = recipe,
+                    type = EditRecipe::class.java
+                ) ?: error("Could not serialize EditRecipe schema ${recipe.schemaVersion}")
+
+                recipeDirectory.mkdirs()
+
+                val destination = recipeFile(recipe.source.uri)
+                val temporary = temporaryFile(destination)
+                val backup = backupFile(destination)
+
                 temporary.delete()
-                throw throwable
+
+                try {
+                    FileOutputStream(temporary).use { stream ->
+                        stream.write(json.toByteArray(Charsets.UTF_8))
+                        stream.flush()
+                        stream.fd.sync()
+                    }
+
+                    backup.delete()
+                    if (destination.exists() && !destination.renameTo(backup)) {
+                        throw IOException("Could not preserve previous EditRecipe before replacement")
+                    }
+
+                    if (!temporary.renameTo(destination)) {
+                        if (backup.exists()) {
+                            backup.renameTo(destination)
+                        }
+                        throw IOException("Could not move completed EditRecipe into place")
+                    }
+
+                    backup.delete()
+                } catch (throwable: Throwable) {
+                    temporary.delete()
+                    if (!destination.exists() && backup.exists()) {
+                        backup.renameTo(destination)
+                    }
+                    throw throwable
+                }
             }
         }
 
     override suspend fun delete(sourceUri: String): Unit =
         withContext(dispatchersHolder.ioDispatcher) {
-            if (sourceUri.isNotBlank()) {
-                recipeFile(sourceUri).delete()
+            storageMutex.withLock {
+                if (sourceUri.isNotBlank()) {
+                    val destination = recipeFile(sourceUri)
+                    destination.delete()
+                    temporaryFile(destination).delete()
+                    backupFile(destination).delete()
+                }
             }
         }
 
     private fun recipeFile(sourceUri: String): File = File(
         recipeDirectory,
         "${sourceKey(sourceUri)}.json"
+    )
+
+    private fun temporaryFile(destination: File): File = File(
+        recipeDirectory,
+        "${destination.name}.tmp"
+    )
+
+    private fun backupFile(destination: File): File = File(
+        recipeDirectory,
+        "${destination.name}.bak"
     )
 
     private fun sourceKey(sourceUri: String): String = MessageDigest
