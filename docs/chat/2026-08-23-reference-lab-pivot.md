@@ -89,6 +89,55 @@ The current workflow can update/replace working bitmap state after sub-edits and
 
 `source -> versioned recipe/operation graph -> preview renderer -> full-resolution export renderer -> existing ImageToolbox save layer`
 
+## 2026-08-23 09:43Z — Gain Map Lab requirement
+
+User:
+
+> It should also be able to create edit and tune a gainmap for an image
+
+Decision:
+
+Gain maps become a first-class P0 editable asset, not only an automatic side effect of Ultra HDR export.
+
+Required capabilities added:
+
+- create a gain map automatically from an SDR image;
+- derive a gain map from a matched SDR/HDR pair and measure reconstruction error;
+- extract an existing Ultra HDR base image, gain-map contents and metadata;
+- create an SDR base + gain map from an HDR source;
+- directly edit 1-channel or 3-channel gain maps;
+- map levels/curves/gamma/black point/white point/threshold/rolloff/smoothing;
+- local brush/gradient/range-mask gain editing;
+- metadata tuning for ratio min/max, gamma, SDR/HDR epsilon, HDR transition/full-HDR display ratios and newer platform fields;
+- actual and simulated display-headroom preview;
+- gain-map grayscale/RGB view, heatmap, histogram, pixel inspector and reconstruction-error map;
+- non-destructive storage inside the main edit recipe;
+- dependency tracking so edits to SDR/HDR image state invalidate, regenerate or re-fit stale gain maps;
+- standards/platform-compatible backward-compatible Ultra HDR export.
+
+Created authoritative subsystem document:
+
+- `docs/GAIN_MAP_LAB.md`
+
+## 2026-08-23 09:44Z — GlowHDR inspiration
+
+User:
+
+> Glowhdr app is inspiration
+
+Publicly observable GlowHDR behavior was reviewed and recorded as product inspiration, especially:
+
+- quick SDR-to-Ultra-HDR conversion;
+- smart/automatic gain-map generation;
+- simple gain-map strength/intensity tuning;
+- HDR display preview;
+- backward-compatible SDR behavior;
+- ordinary JPEG/PNG/HEIC input workflow.
+
+The design rule is **GlowHDR-like simplicity as the quick path, but with a much deeper expert Gain Map Lab available underneath**.
+
+No proprietary implementation details are to be copied. The algorithms will be independently designed from documented gain-map math/platform APIs and validated objectively.
+
 ## Immediate next task
 
-Inspect `HistorySnapshot`, `BaseHistoryComponent`, filter/curve transformation flow, and preview/fullscreen zoom implementation. Then define the first compatible versioned edit recipe and safely double the relevant maximum pinch zoom.
+Inspect `HistorySnapshot`, `BaseHistoryComponent`, filter/curve transformation flow, preview/fullscreen zoom implementation, and current image codec capability. Then define the first compatible versioned edit recipe with gain-map state included from the start, and safely double the relevant maximum pinch zoom.
