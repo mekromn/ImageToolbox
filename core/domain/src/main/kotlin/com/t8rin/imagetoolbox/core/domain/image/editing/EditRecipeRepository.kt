@@ -26,7 +26,12 @@ package com.t8rin.imagetoolbox.core.domain.image.editing
  */
 interface EditRecipeRepository {
 
-    suspend fun load(sourceUri: String): StoredEditRecipe?
+    /**
+     * Loads the recipe keyed by [source.uri] and compares its recorded source
+     * fingerprint with the current [source] identity. Stale work is returned,
+     * never silently deleted; callers decide whether to rebind/recover it.
+     */
+    suspend fun load(source: EditSourceIdentity): StoredEditRecipe?
 
     suspend fun save(recipe: EditRecipe)
 
@@ -37,8 +42,6 @@ interface EditRecipeRepository {
 /**
  * Loading never silently discards stale work. [sourceMatches] describes whether
  * the caller-provided/current identity matches the identity recorded in recipe.
- * More advanced recovery/rebind information can be added in later schema
- * versions without changing the storage boundary.
  */
 data class StoredEditRecipe(
     val recipe: EditRecipe,
