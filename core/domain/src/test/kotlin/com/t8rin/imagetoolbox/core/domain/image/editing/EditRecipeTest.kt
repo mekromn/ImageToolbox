@@ -18,6 +18,7 @@
 package com.t8rin.imagetoolbox.core.domain.image.editing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -144,5 +145,82 @@ class EditRecipeTest {
 
         assertTrue(empty.isEmpty)
         assertTrue(!withMask.isEmpty)
+    }
+
+    @Test
+    fun continuousInteractionProducesOneUndoStep() {
+        val history = EditRecipeHistory(initialRecipe = EditRecipe.empty(source))
+        val operation = EditOperation(
+            id = "exposure-1",
+            type = EditOperationTypes.Exposure,
+            algorithmId = "reference-lab.exposure",
+            algorithmVersion = 1,
+            processingStage = EditProcessingStage.SceneReferredLinear,
+            parameters = mapOf("ev" to EditValue.Decimal(0.0))
+        )
+
+        history.beginInteraction()
+        history.setRecipe(
+            history.recipe.append(operation)
+        )
+        history.setRecipe(
+            history.recipe.replace(
+                operation.copy(parameters = mapOf("ev" to EditValue.Decimal(0.5)))
+            )
+        )
+        history.setRecipe(
+            history.recipe.replace(
+                operation.copy(parameters = mapOf("ev" to EditValue.Decimal(1.0)))
+            )
+        )
+        assertTrue(history.endInteraction())
+
+        assertTrue(history.canUndo)
+        assertFalse(history.recipe.isEmpty)
+        assertTrue(history.undo())
+        assertTrue(history.recipe.isEmpty)
+        assertFalse(history.canUndo)
+        assertTrue(history.canRedo)
+    }
+
+    @Test
+    fun undoRedoRestoresWholeRecipeIncludingGainMapDependencyState() {
+        val history = EditRecipeHistory(initialRecipe = EditRecipe.empty(source))
+        val withGainMap = history.recipe.copy(
+            gainMap = GainMapRecipe(
+                sourceMode = GainMapSourceMode.GeneratedFromSdr,
+                generatorAlgorithmId = "reference-lab.smart-gain-map",
+                generatorAlgorithmVersion = 1
+            )
+        )
+        history.setRecipe(withGainMap)
+        history.setRecipe(withGainMap.markGainMapStale("Exposure changed"))
+
+        assertEquals(GainMapDependencyState.Stale, history.recipe.gainMap?.dependencyState)
+        assertTrue(history.undo())
+        assertEquals(GainMapDependencyState.Current, history.recipe.gainMap?.dependencyState)
+        assertTrue(history.redo())
+        assertEquals(GainMapDependencyState.Stale, history.recipe.gainMap?.dependencyState)
+    }
+
+    @Test
+    fun cancelInteractionRestoresStartingRecipeWithoutCreatingUndoEntry() {
+        val history = EditRecipeHistory(initialRecipe = EditRecipe.empty(source))
+        history.beginInteraction()
+        history.setRecipe(
+            history.recipe.append(
+                EditOperation(
+                    id = "contrast-1",
+                    type = EditOperationTypes.Contrast,
+                    algorithmId = "reference-lab.contrast",
+                    algorithmVersion = 1
+                )
+            )
+        )
+
+        assertTrue(history.cancelInteraction())
+        assertTrue(history.recipe.isEmpty)
+        assertFalse(history.canUndo)
+        assertFalse(history.canRedo)
     }
 }
