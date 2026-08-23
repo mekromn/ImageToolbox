@@ -223,4 +223,25 @@ class EditRecipeTest {
         assertFalse(history.canUndo)
         assertFalse(history.canRedo)
     }
+
+    @Test
+    fun sourceIdentityAllowsPartialFingerprintButRejectsKnownMismatch() {
+        val stored = source.copy(
+            sizeBytes = 12_000_000,
+            modifiedAtMillis = 1000,
+            contentHash = "abc"
+        )
+        val sameWithPartialCurrentMetadata = source.copy(
+            sizeBytes = 12_000_000,
+            modifiedAtMillis = null,
+            contentHash = null
+        )
+        val modifiedSource = stored.copy(
+            modifiedAtMillis = 2000
+        )
+
+        assertTrue(stored.matches(sameWithPartialCurrentMetadata))
+        assertFalse(stored.matches(modifiedSource))
+        assertFalse(stored.matches(stored.copy(uri = "content://different")))
+    }
 }
