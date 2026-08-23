@@ -35,7 +35,11 @@ jobs:
           cache: gradle
 
       - name: Run Reference Lab core unit tests
-        run: bash ./gradlew :core:domain:testFossDebugUnitTest --stacktrace
+        run: >-
+          bash ./gradlew
+          :core:domain:testFossDebugUnitTest
+          :core:data:testFossDebugUnitTest
+          --stacktrace
 
       - name: Build FOSS debug APK
         run: bash ./gradlew :app:assembleFossDebug --stacktrace
