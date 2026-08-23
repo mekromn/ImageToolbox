@@ -4,6 +4,9 @@
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +23,7 @@ package com.t8rin.imagetoolbox.core.data.di
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapters.PolymorphicJsonAdapterFactory
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.t8rin.imagetoolbox.core.data.json.EditValueJsonAdapter
 import com.t8rin.imagetoolbox.core.data.json.ImageFormatJsonAdapter
 import com.t8rin.imagetoolbox.core.data.json.ImageScaleModeJsonAdapter
 import com.t8rin.imagetoolbox.core.data.json.MoshiParser
@@ -82,6 +86,7 @@ internal interface JsonModule {
                     .withSubtype(FilenameBehavior.Random::class.java, "random")
                     .withDefaultValue(FilenameBehavior.None())
             )
+            .add(EditValueJsonAdapter())
             .add(ImageFormatJsonAdapter())
             .add(PresetJsonAdapter())
             .add(ResizeTypeJsonAdapter())

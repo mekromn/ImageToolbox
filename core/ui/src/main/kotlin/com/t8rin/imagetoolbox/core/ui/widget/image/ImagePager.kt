@@ -225,7 +225,10 @@ fun ImagePager(
                     Box(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        val zoomState = rememberZoomState(20f)
+                        // Reference Lab doubles the existing primary pager limit
+                        // from 20x to 40x. Source-aware LOD/Pixel Inspector work is
+                        // still required before zoom level implies source detail.
+                        val zoomState = rememberZoomState(40f)
                         Picture(
                             showTransparencyChecker = false,
                             model = uris?.getOrNull(page),

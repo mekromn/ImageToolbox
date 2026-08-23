@@ -75,7 +75,10 @@ fun EnhancedZoomableModalBottomSheet(
 ) {
     EnhancedModalBottomSheet(
         sheetContent = {
-            val zoomState = rememberZoomState(maxScale = 20f)
+            // Reference Lab doubles ImageToolbox's existing 20x inspection ceiling.
+            // This only expands navigation freedom; it does not imply additional
+            // source detail when the displayed bitmap/LOD is lower resolution.
+            val zoomState = rememberZoomState(maxScale = 40f)
 
             Column(
                 modifier = Modifier
