@@ -182,6 +182,139 @@ Additional architecture requirements locked during this pass:
 
 The project state was updated to make these approved requirements and the early architecture locks part of the resume procedure.
 
+## 2026-08-23 10:38Z — second-wave approval and implementation start
+
+User:
+
+> Ok add those and let's begin
+
+Approved second-wave requirements were added as `docs/REFERENCE_LAB_SECOND_WAVE_REQUIREMENTS.md`, numbered 41–50:
+
+41. lossless/passthrough editing and objective lossless verification;
+42. professional Color Mixer / Selective Color / Channel Mixer / grading;
+43. real soft proofing;
+44. multi-point scientific color sampler;
+45. non-destructive Healing / Clone / Remove;
+46. image-defect correction;
+47. operation blend modes;
+48. Dodge & Burn;
+49. explicit profile assignment vs profile conversion;
+50. bit-exact/lossless output verification.
+
+The standalone handoff document was updated to `ImageToolbox_Reference_Lab_Feature_Specification_v4.docx`, now 20 pages, rendered page-by-page and visually inspected before delivery.
+
+### First production implementation
+
+Created:
+
+- `core/domain/src/main/kotlin/com/t8rin/imagetoolbox/core/domain/image/editing/EditRecipe.kt`
+- initial recipe model commit `20045d659ff9d1e092d1c63bc04ba207bab2a67b`.
+
+Recipe schema v1 intentionally includes expensive-to-retrofit architecture from day one:
+
+- schema version and source identity/fingerprint;
+- ordered operations;
+- stable operation ID/type;
+- algorithm ID and algorithm version;
+- enabled/opacity;
+- blend mode;
+- explicit processing stage;
+- typed parameters;
+- mask reference;
+- lossless intent;
+- source-normalized masks;
+- dual SDR/HDR rendition state;
+- HDR Master state;
+- first-class Gain Map recipe state;
+- gain-map generator algorithm/version;
+- current/stale gain-map dependency state;
+- SDR/HDR pair reference source;
+- gain-map operation stack;
+- gain-map metadata and channel mode;
+- separate profile-assignment and profile-conversion semantics.
+
+Created recipe architecture unit tests in:
+
+- `core/domain/src/test/kotlin/com/t8rin/imagetoolbox/core/domain/image/editing/EditRecipeTest.kt`
+- initial test commit `6e6d42f49a74259c5758e14827720ce38af1321c`.
+
+Created platform-independent recipe history engine:
+
+- `core/domain/src/main/kotlin/com/t8rin/imagetoolbox/core/domain/image/editing/EditRecipeHistory.kt`
+- commit `0245b75cbeb827ae37f6ba45b9c5e4bd2e0dd201`.
+
+History behavior includes:
+
+- undo/redo;
+- bounded history;
+- begin/end interaction grouping so a continuous slider drag becomes one undo entry;
+- cancel interaction;
+- restore persistent authoritative state without carrying stale undo history.
+
+Additional tests for grouped interaction, cancel, and gain-map dependency state through undo/redo were added in commit `241eb4c894cedd6254ad86c369f398d0de0ad335`.
+
+### Existing editor migration finding
+
+`SingleEditComponent.HistorySnapshot` currently stores a cached rendered URI plus image/export settings rather than a durable operation graph. Existing filter/curve subtools can render into a new cached PNG/working bitmap.
+
+Migration decision:
+
+- `EditRecipe` becomes authoritative edit intent;
+- baked/cached bitmaps become disposable acceleration/legacy compatibility artifacts;
+- existing tools remain working during migration;
+- each tool is migrated incrementally to recipe-native preview/full-resolution rendering rather than breaking the editor all at once.
+
+### Zoom implementation
+
+ImageToolbox's shared fullscreen zoom surface already used a 20x maximum. Therefore the approved requirement to double the relevant current maximum means 40x for ImageToolbox, not the old Aves-specific approximately-10x target.
+
+Changed:
+
+- `EnhancedZoomableModalBottomSheet`: `maxScale = 20f` -> `40f`;
+- commit `6dfbb0d25a4700644e85fd9b827afb4efe44ee36`.
+
+The code explicitly warns that 40x gesture zoom alone does not guarantee additional source detail; Reference/Pixel Inspector still needs source-aware LOD/full-resolution sampling.
+
+### CI and APK workflow
+
+Created:
+
+- `.github/workflows/reference_lab.yml`
+- initial commit `1ae10995054681b219a4991dee65a84b9bd12d91`.
+
+Purpose:
+
+- run core recipe tests;
+- build an unsigned FOSS debug APK;
+- upload that APK as a workflow artifact.
+
+Opened ImageToolbox draft PR #1:
+
+- **Reference Lab foundation: versioned non-destructive recipe architecture**.
+
+First CI run `32634707730` failed before compiling tests because the Gradle task name `:core:domain:testDebugUnitTest` was ambiguous: the project defines `testFossDebugUnitTest` and `testMarketDebugUnitTest`.
+
+This was a workflow selection error, not a recipe test/code failure.
+
+Fix committed as `807d3c2829b0c6319844d133ea80e56135aa679a`:
+
+- use `:core:domain:testFossDebugUnitTest` explicitly;
+- migrate JDK action to `actions/setup-java@v5` with Temurin 21.
+
+Latest observed branch/PR head after recipe-history tests:
+
+- `241eb4c894cedd6254ad86c369f398d0de0ad335`;
+- draft PR #1 remained open;
+- corrected Reference Lab CI run `32634896356` was queued at last observation.
+
+No CI success or APK availability is claimed until the corrected run actually completes.
+
 ## Immediate next task
 
-Inspect `HistorySnapshot`, `BaseHistoryComponent`, filter/curve transformation flow, preview/fullscreen zoom implementation, and current image codec capability. Then define the first compatible versioned edit recipe with gain-map state, operation-version IDs, stable coordinate semantics, SDR/HDR rendition state and color-stage provenance included from the start.
+1. let corrected CI validate the recipe/history model and fix any real compile/test/build failures;
+2. attach `EditRecipe`/`EditRecipeHistory` to `SingleEditComponent` state and existing `HistorySnapshot` undo/redo without breaking baked-bitmap compatibility;
+3. initialize/update recipe source identity as images change;
+4. invalidate dependent gain-map state when legacy bitmap edits change the rendered base;
+5. persist/recover recipes;
+6. audit full-resolution/LOD behavior so 40x zoom never masquerades as source detail;
+7. begin the high-precision Reference renderer/color/HDR path only after these foundations are sound.
