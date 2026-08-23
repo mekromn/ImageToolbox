@@ -8,6 +8,7 @@ Last updated: 2026-08-23
 - Default/base branch: `master`
 - Working branch: `feature/reference-lab`
 - Base commit: `70cce13f91ba80df9ac11f2c58f3c3bb0d6048d2`
+- Active draft PR: `#1` — **Reference Lab foundation: versioned non-destructive recipe architecture**
 - Previous Aves implementation target: superseded; `mekromn/aves-editor` PR #1 is closed but preserved for historical/reference use.
 
 ## P0 goals
@@ -23,7 +24,9 @@ Last updated: 2026-08-23
 
 Full scope: `docs/REFERENCE_LAB_FEATURE_SPEC.md`.
 
-Approved advanced requirements: `docs/REFERENCE_LAB_ADVANCED_REQUIREMENTS.md`.
+Approved advanced requirements 1–40: `docs/REFERENCE_LAB_ADVANCED_REQUIREMENTS.md`.
+
+Approved second-wave requirements 41–50: `docs/REFERENCE_LAB_SECOND_WAVE_REQUIREMENTS.md`.
 
 Gain Map Lab scope: `docs/GAIN_MAP_LAB.md`.
 
@@ -66,11 +69,20 @@ This substantially reduces architectural mismatch and lets the project focus on 
 
 This means Reference Lab should extend/refactor the existing SingleEdit state model rather than build a second editor.
 
-## Important architectural issue to solve
+### Current history limitation discovered
 
-The existing editor can replace/update the working bitmap after editing and uses scaled bitmaps/previews for display. Reference Lab requires a durable non-destructive operation recipe whose authoritative state is edit intent rather than a chain of progressively modified/quantized pixel buffers.
+`SingleEditComponent.HistorySnapshot` currently records a cached rendered URI plus image/export settings. It does **not** record the filter list, curves, masks, or a durable operation graph.
 
-The design must preserve existing tools while moving high-fidelity operations toward:
+Current filter/curve subtools can render a result and call `updateBitmapAfterEditing(...)`, causing the working image to become a newly cached PNG/bitmap. That is useful existing behavior but cannot remain the authoritative non-destructive model for Reference Lab.
+
+Migration rule:
+
+- new Reference Lab edit intent lives in `EditRecipe`;
+- cached/rendered bitmaps are disposable acceleration/legacy compatibility artifacts;
+- existing baked-bitmap tools continue to work during migration;
+- each tool is migrated incrementally to recipe-native preview + full-resolution rendering rather than breaking the existing editor all at once.
+
+Target architecture:
 
 `source -> versioned recipe/operation graph -> preview renderer -> explicit full-resolution export renderer -> existing ImageToolbox save layer`
 
@@ -109,9 +121,9 @@ Android gain-map metadata controls to expose/validate include ratio min/max, gam
 
 Authoritative subsystem spec: `docs/GAIN_MAP_LAB.md`.
 
-## Advanced requirements — APPROVED
+## Advanced requirements 1–40 — APPROVED
 
-The user approved the complete advanced expansion now recorded in `docs/REFERENCE_LAB_ADVANCED_REQUIREMENTS.md`.
+The user approved the complete advanced expansion recorded in `docs/REFERENCE_LAB_ADVANCED_REQUIREMENTS.md`.
 
 Major additions include:
 
@@ -141,10 +153,7 @@ Major additions include:
 - HDR/SDR batch laboratory;
 - Gain Map presets;
 - optional machine-assisted Smart Gain Map later;
-- dedicated `VIEW | EDIT | GAIN MAP | MASKS | ANALYZE | COMPARE | EXPORT` workspace.
-
-The completeness pass also locked additional architectural protections:
-
+- dedicated `VIEW | EDIT | GAIN MAP | MASKS | ANALYZE | COMPARE | EXPORT` workspace;
 - explicit scene-referred vs display-referred stage semantics;
 - ICC/CICP/NCLX provenance and conflict resolution;
 - straight/premultiplied alpha correctness;
@@ -156,9 +165,24 @@ The completeness pass also locked additional architectural protections:
 - depth-map-aware masking when available;
 - CPU/GPU/preview/export cross-backend conformance testing.
 
-## Early architecture locks — DO BEFORE DEEP RENDERER WORK
+## Second-wave requirements 41–50 — APPROVED
 
-These must be decided in the foundational recipe/renderer design because retrofitting them later would be expensive:
+Recorded in `docs/REFERENCE_LAB_SECOND_WAVE_REQUIREMENTS.md`:
+
+41. lossless/passthrough editing and objective lossless verification;
+42. professional Color Mixer, Selective Color, Channel Mixer and grading controls;
+43. real soft proofing for sRGB/P3/Rec.2020/custom ICC output;
+44. persistent multi-point scientific color sampler;
+45. non-destructive Healing / Clone / Remove;
+46. image-defect correction including luma/chroma denoise, hot/dead-pixel, banding and moiré controls;
+47. operation blend modes with explicit color-domain semantics;
+48. Dodge & Burn using the shared recipe/mask engine;
+49. explicit distinction between profile assignment and profile conversion;
+50. bit-exact/lossless verification with PASS / FAIL / NOT VERIFIABLE outcomes.
+
+The schema foundation must remain compatible with these even before their UIs/algorithms land.
+
+## Early architecture locks — DO BEFORE DEEP RENDERER WORK
 
 1. dual SDR/HDR rendition state model;
 2. per-operation algorithm versioning;
@@ -171,35 +195,150 @@ These must be decided in the foundational recipe/renderer design because retrofi
 9. gain-map dependency/invalidation rules;
 10. preview/export backend conformance requirements.
 
+## IMPLEMENTED: non-destructive recipe domain foundation
+
+Production code now exists at:
+
+`core/domain/src/main/kotlin/com/t8rin/imagetoolbox/core/domain/image/editing/EditRecipe.kt`
+
+Initial commit:
+
+- `20045d659ff9d1e092d1c63bc04ba207bab2a67b` — versioned non-destructive recipe model.
+
+Schema v1 already includes architecture-significant fields instead of postponing them:
+
+- recipe schema version;
+- source identity/fingerprint fields;
+- ordered operations;
+- stable operation ID/type;
+- explicit algorithm ID and algorithm version;
+- enabled/opacity;
+- blend mode;
+- processing stage (`Encoded`, `SceneReferredLinear`, `DisplayReferred`, `Perceptual`, `Geometry`);
+- typed generic parameters;
+- mask reference;
+- lossless intent;
+- masks with stable source-normalized coordinate space;
+- dual SDR/HDR rendition edit mode;
+- HDR Master state;
+- first-class gain-map recipe state;
+- gain-map generator algorithm/version;
+- gain-map dependency `Current` / `Stale` state and stale reason;
+- SDR/HDR pair reference identity support;
+- gain-map operation stack;
+- gain-map metadata model;
+- 1-channel luminance vs RGB gain-map mode;
+- gain-map direction;
+- separate semantic operation types for profile assignment and profile conversion.
+
+The model also includes append/replace/remove/move operation helpers and explicit gain-map invalidation without discarding map edit intent.
+
+## IMPLEMENTED: recipe architecture unit tests
+
+Test file:
+
+`core/domain/src/test/kotlin/com/t8rin/imagetoolbox/core/domain/image/editing/EditRecipeTest.kt`
+
+Commit:
+
+- `6e6d42f49a74259c5758e14827720ce38af1321c` — recipe architecture tests.
+
+Current tests cover:
+
+- ordered operation movement;
+- algorithm version remaining recipe state;
+- gain-map stale marking preserving map edits;
+- blend-mode/lossless fields present from schema v1;
+- masks defaulting to canonical source-normalized coordinates;
+- profile assignment and conversion being distinct semantic operations;
+- recipe emptiness semantics.
+
+CI execution is required before these tests are considered passing.
+
+## IMPLEMENTED: Reference Lab CI / debug APK pipeline
+
+Workflow:
+
+`.github/workflows/reference_lab.yml`
+
+Commit:
+
+- `1ae10995054681b219a4991dee65a84b9bd12d91`
+
+Behavior:
+
+- runs on pushes to `feature/reference-lab` and PRs targeting `master`;
+- JDK 21;
+- runs `:core:domain:testDebugUnitTest`;
+- builds `:app:assembleFossDebug`;
+- uploads the unsigned FOSS debug APK as `Reference-Lab-FOSS-Debug-APK`.
+
+Draft PR #1 was opened so PR-triggered CI can be inspected through the connected GitHub tooling.
+
+First observed PR run:
+
+- workflow run `32634707730`;
+- job `97182603437`;
+- last observed state: core unit tests **in progress**; APK build pending.
+
+Do not claim CI success or an APK artifact until the run actually finishes successfully.
+
+## IMPLEMENTED: doubled shared fullscreen zoom ceiling
+
+The shared `EnhancedZoomableModalBottomSheet` upstream/current limit was `20f`.
+
+Reference Lab now sets:
+
+`rememberZoomState(maxScale = 40f)`
+
+Commit:
+
+- `6dfbb0d25a4700644e85fd9b827afb4efe44ee36`
+
+This is the actual ImageToolbox interpretation of the approved requirement to double the relevant existing maximum zoom. It replaces the old Aves-specific expectation of roughly 10x.
+
+Important fidelity note: increasing the gesture scale ceiling does **not** guarantee more source detail. Reference/Pixel Inspector still requires source-aware LOD/full-resolution decode and deterministic physical-pixel sampling. The code comment states this explicitly.
+
 ## Current implementation state
 
-Completed in this pivot session:
+Completed:
 
 - created `feature/reference-lab` from current `master`;
-- added full Reference Lab feature specification;
-- added continuity protocol;
-- inspected current module graph and SingleEdit architecture;
-- closed Aves draft PR #1 as superseded, preserving the branch/history;
-- created an external Word feature specification for handoff/reference;
-- added Gain Map Lab as a P0 subsystem and documented GlowHDR as workflow inspiration;
-- added and approved 40 advanced/completeness requirements in `REFERENCE_LAB_ADVANCED_REQUIREMENTS.md`.
+- authoritative feature, Gain Map Lab, advanced, second-wave, continuity and chat documentation;
+- full Word handoff specification, currently v4 / 20 pages;
+- closed superseded Aves draft PR while preserving its history;
+- mapped core SingleEdit/history/filter/curve architecture and identified the baked-bitmap migration problem;
+- versioned recipe domain model implemented;
+- recipe architecture tests implemented;
+- Reference Lab CI + FOSS debug APK artifact workflow implemented;
+- ImageToolbox draft PR #1 opened;
+- shared fullscreen zoom ceiling doubled from 20x to 40x.
 
-No pixel-rendering behavior has been changed in ImageToolbox yet in this branch.
+Not yet completed:
+
+- recipe is not yet attached to `SingleEditComponent.HistorySnapshot` / editor state;
+- recipe persistence/process-death recovery is not yet implemented;
+- existing Filter/Curves tools are not yet recipe-native;
+- high-precision Reference renderer has not yet been implemented;
+- physical 1:1 / true Pixel Inspector has not yet been implemented;
+- HDR/Ultra HDR/Gain Map Lab rendering has not yet been implemented;
+- current CI run has not yet been confirmed successful;
+- no target-device rendering claim has been made.
 
 ## Immediate next implementation order
 
-1. Map `BaseHistoryComponent` / `HistorySnapshot` and the exact SingleEdit filter/curve/export render path.
-2. Define the versioned non-destructive `EditRecipe`, including operation algorithm version IDs, stable coordinate semantics and SDR/HDR rendition state.
-3. Include gain-map generation/edit metadata as recipe-owned non-destructive state from the start rather than bolting it on later.
-4. Define color-stage/provenance contracts and deterministic render semantics.
-5. Persist/recover recipe state without altering originals.
-6. Trace the image-preview/fullscreen zoom implementation and double the relevant maximum pinch zoom safely.
-7. Audit decode -> bitmap/image -> Compose/GPU -> Android surface -> display for color/precision/HDR losses.
-8. Add viewer/render telemetry and strict Reference / physical 1:1 / Pixel Inspector behavior.
-9. Establish the high-precision working/color contract and tiled full-resolution semantics before exposing new Light/Color sliders.
-10. Implement first real pointwise adjustments and comparison controls.
-11. Implement HDR/Ultra HDR display plus Gain Map Lab creation/extraction/tuning/headroom/validation/export.
-12. Add spatial/local tools, masks, scopes, RAW and advanced export in roadmap order.
+1. finish CI validation of the domain model and fix any compile/test/build failures;
+2. attach `EditRecipe` to `SingleEditComponent` state and existing `HistorySnapshot` undo/redo without breaking baked-bitmap compatibility;
+3. initialize/update recipe source identity as image sources change;
+4. mark dependent gain-map state stale when transitional legacy bitmap edits alter the rendered base;
+5. persist/recover recipes without altering originals;
+6. audit fullscreen/image-preview source resolution and LOD so 40x zoom never masquerades as higher source detail;
+7. audit decode -> bitmap/image -> Compose/GPU -> Android surface -> display for color/precision/HDR losses;
+8. add viewer/render telemetry and strict Reference / physical 1:1 / Pixel Inspector behavior;
+9. establish high-precision working/color/tiled full-resolution contracts;
+10. implement first real pointwise adjustments and comparison controls;
+11. implement HDR/Ultra HDR display plus Gain Map Lab creation/extraction/tuning/headroom/validation/export;
+12. add spatial/local tools, masks, scopes, RAW and advanced output in roadmap order.
 
 ## Validation rule
 
