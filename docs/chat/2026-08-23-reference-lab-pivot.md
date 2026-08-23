@@ -138,6 +138,50 @@ The design rule is **GlowHDR-like simplicity as the quick path, but with a much 
 
 No proprietary implementation details are to be copied. The algorithms will be independently designed from documented gain-map math/platform APIs and validated objectively.
 
+## 2026-08-23 09:50Z — completeness question
+
+User:
+
+> What needs to be added
+
+A further completeness pass identified 30 advanced requirements, with four especially important architecture items called out before deep implementation:
+
+- dual SDR/HDR rendition editing;
+- SDR/HDR pair alignment;
+- encode -> reopen -> validate export;
+- per-operation recipe algorithm versioning.
+
+Other approved additions included HDR Master controls, reconstruction optimization, bracketed HDR merge, gain-map resolution/encoding controls, perceptual gain-map editing, frequency separation, halo detection, detailed reconstruction-error analysis, Ultra HDR integrity checker, consolidated metadata inspection, Headroom Lab, display-adaptation visualization, HDR color-volume analysis, absolute/relative HDR scopes, reference-image matching, named edit snapshots, recipe/sidecar import-export, deterministic rendering, explicit quality fallback telemetry, tiled full-resolution rendering, hardware capability/verification tools, HDR batch lab, gain-map presets, optional semantic Smart Gain Map and a dedicated Reference Lab workspace.
+
+## 2026-08-23 09:59Z — user approved additions and asked for anything else
+
+User:
+
+> Ok add those as well. Anything else?
+
+Repository action:
+
+Created authoritative approved-scope supplement:
+
+- `docs/REFERENCE_LAB_ADVANCED_REQUIREMENTS.md`
+
+It records the previously identified 30 advanced requirements and an additional architecture completeness pass.
+
+Additional architecture requirements locked during this pass:
+
+- explicit scene-referred vs display-referred operation stages;
+- ICC/CICP/NCLX color-profile provenance and deterministic conflict resolution;
+- straight vs premultiplied alpha correctness;
+- stable source-coordinate contract for geometry and all masks;
+- optional render/pixel provenance audit record;
+- high-precision technical and creative LUT support;
+- chart-assisted color/camera calibration;
+- non-destructive technical lens/geometry correction;
+- depth-map-aware masking when available;
+- CPU/GPU/preview/export cross-backend conformance tests.
+
+The project state was updated to make these approved requirements and the early architecture locks part of the resume procedure.
+
 ## Immediate next task
 
-Inspect `HistorySnapshot`, `BaseHistoryComponent`, filter/curve transformation flow, preview/fullscreen zoom implementation, and current image codec capability. Then define the first compatible versioned edit recipe with gain-map state included from the start, and safely double the relevant maximum pinch zoom.
+Inspect `HistorySnapshot`, `BaseHistoryComponent`, filter/curve transformation flow, preview/fullscreen zoom implementation, and current image codec capability. Then define the first compatible versioned edit recipe with gain-map state, operation-version IDs, stable coordinate semantics, SDR/HDR rendition state and color-stage provenance included from the start.
