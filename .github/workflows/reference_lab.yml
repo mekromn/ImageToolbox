@@ -27,15 +27,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
-          distribution: 'adopt'
+          distribution: 'temurin'
           java-package: 'jdk'
           cache: gradle
 
       - name: Run Reference Lab core unit tests
-        run: bash ./gradlew :core:domain:testDebugUnitTest --stacktrace
+        run: bash ./gradlew :core:domain:testFossDebugUnitTest --stacktrace
 
       - name: Build FOSS debug APK
         run: bash ./gradlew :app:assembleFossDebug --stacktrace
